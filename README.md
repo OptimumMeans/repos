@@ -1,6 +1,6 @@
 # repos — Dropbox-style on/off toggle for GitHub repos
 
-Keep 55+ GitHub repos without keeping them all on disk. The GitHub remote is the
+Keep any amount of GitHub repos without keeping them all on disk. The GitHub remote is the
 "cloud" copy; you hydrate only what you're working on. Frees storage on the
 MacBook Neo while keeping every repo one click (or one command) away.
 
