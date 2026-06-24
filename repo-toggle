@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# repo-toggle — click handler for the SwiftBar GitHub plugin.
+# Toggles a repo on/off via the `repo` tool and shows a macOS notification.
+# Usage: repo-toggle <on|off> <repo-name>
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+action="${1:-}"; name="${2:-}"
+notify() { # subtitle, message
+  osascript -e "display notification \"$2\" with title \"GitHub Repos\" subtitle \"$1\"" >/dev/null 2>&1
+}
+
+case "$action" in
+  on)
+    if out=$(repo on "$name" 2>&1); then
+      notify "$name" "Added to this machine ✓"
+    else
+      notify "$name" "Couldn't add — $(printf '%s' "$out" | tail -1)"
+    fi ;;
+  off)
+    if out=$(repo off "$name" 2>&1); then
+      notify "$name" "Offloaded to cloud ✓"
+    else
+      notify "$name" "Kept on machine — unsaved/unpushed work"
+    fi ;;
+  *)
+    notify "error" "unknown action: $action" ;;
+esac

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# repo — Dropbox-style on/off toggle for GitHub repos, to save local storage.
+# Clones live under $REPO_DIR (default ~/dev). The GitHub remote is the "cloud" copy;
+# you hydrate only what you're working on. `off` refuses to delete unsaved work.
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-$HOME/dev}"
+
+die() { printf 'repo: %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+have gh  || die "GitHub CLI (gh) not found. Install with: brew install gh"
+have git || die "git not found."
+
+# Resolve a user-typed name to owner/repo and a local dir name.
+# Accepts "repo", "owner/repo". Bare names use your default gh account.
+resolve_slug() {
+  local input="$1"
+  if [[ "$input" == */* ]]; then echo "$input"; else
+    local me; me="$(gh api user --jq .login 2>/dev/null)" || die "not logged in — run: gh auth login"
+    echo "$me/$input"
+  fi
+}
+local_name() { basename "$1"; }   # owner/repo -> repo
+
+cmd_on() {
+  [ $# -ge 1 ] || die "usage: repo on <name|owner/repo>"
+  local slug name dest
+  slug="$(resolve_slug "$1")"; name="$(local_name "$slug")"; dest="$REPO_DIR/$name"
+  [ -e "$dest" ] && die "$dest already exists (already on). Use: cd $dest"
+  mkdir -p "$REPO_DIR"
+  echo "Cloning $slug → $dest (blobless partial clone)…"
+  gh repo clone "$slug" "$dest" -- --filter=blob:none
+  echo "✓ on. cd $dest"
+}
+
+cmd_off() {
+  local force=0
+  [ "${1:-}" = "--force" ] && { force=1; shift; }
+  [ $# -ge 1 ] || die "usage: repo off [--force] <name>"
+  local name dest; name="$(local_name "$1")"; dest="$REPO_DIR/$name"
+  [ -d "$dest/.git" ] || die "$dest is not a cloned repo (already off?)."
+
+  # Safety: never offload the directory that holds this toolkit itself.
+  local src="${BASH_SOURCE[0]:-$0}"
+  while [ -L "$src" ]; do src="$(readlink "$src")"; done
+  local tool_dir dest_real
+  tool_dir="$(cd "$(dirname "$src")" && pwd -P)"
+  dest_real="$(cd "$dest" 2>/dev/null && pwd -P || echo "$dest")"
+  case "$tool_dir/" in
+    "$dest_real"/*) die "refusing to offload \"$name\" — it contains the repo toolkit itself." ;;
+  esac
+
+  if [ "$force" -eq 0 ]; then
+    local problems=""
+    [ -n "$(git -C "$dest" status --porcelain)" ] && problems+="  • uncommitted/untracked changes\n"
+    # commits on any local branch not present on any remote:
+    [ -n "$(git -C "$dest" log --branches --not --remotes --oneline 2>/dev/null)" ] && problems+="  • unpushed commits\n"
+    [ -n "$(git -C "$dest" stash list 2>/dev/null)" ] && problems+="  • stashed changes\n"
+    if [ -n "$problems" ]; then
+      printf 'repo: refusing to remove %s — would lose work:\n' "$name" >&2
+      printf '%b' "$problems" >&2
+      die "commit & push first, or override with: repo off --force $name"
+    fi
+  fi
+  rm -rf "$dest"
+  echo "✓ off. Removed $dest (still safe on GitHub)."
+}
+
+cmd_list() {
+  echo "Your GitHub repos (● = cloned locally in $REPO_DIR):"
+  gh repo list --limit 200 --json nameWithOwner,name,diskUsage \
+    --jq '.[] | "\(.name)\t\(.nameWithOwner)\t\(.diskUsage)"' \
+  | sort | while IFS=$'\t' read -r name slug ku; do
+      if [ -d "$REPO_DIR/$name/.git" ]; then mark="●"; else mark=" "; fi
+      printf "  %s %-35s %6s MB (remote)\n" "$mark" "$slug" "$((ku/1024))"
+    done
+}
+
+cmd_status() {
+  echo "Locally cloned repos in $REPO_DIR:"
+  local any=0
+  for d in "$REPO_DIR"/*/; do
+    [ -d "$d.git" ] || continue
+    any=1
+    local sz; sz="$(du -sh "$d" 2>/dev/null | cut -f1)"
+    printf "  ● %-30s %8s\n" "$(basename "$d")" "$sz"
+  done
+  [ "$any" -eq 0 ] && echo "  (none — all offloaded)"
+}
+
+case "${1:-}" in
+  on)     shift; cmd_on "$@" ;;
+  off)    shift; cmd_off "$@" ;;
+  list|ls) cmd_list ;;
+  status|st) cmd_status ;;
+  *) cat >&2 <<EOF
+repo — toggle GitHub repos on/off locally (saves storage; remote is the cloud copy)
+
+  repo list                 list your GitHub repos, ● marks locally cloned
+  repo on  <name>           clone into $REPO_DIR (blobless partial clone)
+  repo off <name>           remove local copy (refuses if unsaved/unpushed work)
+  repo off --force <name>   remove even with local changes (careful)
+  repo status               show disk usage of cloned repos
+
+Names accept "repo" (your account) or "owner/repo".
+EOF
+    exit 1 ;;
+esac
