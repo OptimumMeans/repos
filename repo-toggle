@@ -4,6 +4,11 @@
 # Usage: repo-toggle <on|off> <repo-name>
 export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+# Load token from file so clones work when SwiftBar runs us without a keychain
+# session. gh repo clone and the gh git-credential helper both honor GH_TOKEN.
+TOKEN_FILE="$HOME/.config/gh/swiftbar-token"
+[ -r "$TOKEN_FILE" ] && export GH_TOKEN="$(cat "$TOKEN_FILE")"
+
 action="${1:-}"; name="${2:-}"
 notify() { # subtitle, message
   osascript -e "display notification \"$2\" with title \"GitHub Repos\" subtitle \"$1\"" >/dev/null 2>&1

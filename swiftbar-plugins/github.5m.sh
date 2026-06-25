@@ -7,6 +7,13 @@
 
 export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+# --- Auth: load token from a file so this menu-bar process never depends on a
+#     live keychain read (a GUI-spawned background process can't answer the
+#     macOS access prompt, so the keychain read can silently fail). GH_TOKEN
+#     takes precedence over the keyring and bypasses it. ---
+TOKEN_FILE="$HOME/.config/gh/swiftbar-token"
+[ -r "$TOKEN_FILE" ] && export GH_TOKEN="$(cat "$TOKEN_FILE")"
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="${REPO_DIR:-$HOME/dev}"   # where clones live (matches `repo` tool default)
 TOGGLE="$HERE/../repo-toggle"        # move-proof: relative to this plugin
