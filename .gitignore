@@ -1,4 +1,5 @@
-# Built locally by notifier/build.sh — regenerate, don't commit.
+# Built locally by the build.sh scripts — regenerate, don't commit.
 notifier/GitHub Repos.app/
+menubar/Repos.app/
 
 .DS_Store

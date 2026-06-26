@@ -30,7 +30,7 @@ cmd_on() {
   [ -e "$dest" ] && die "$dest already exists (already on). Use: cd $dest"
   mkdir -p "$REPO_DIR"
   echo "Cloning $slug → $dest (blobless partial clone)…"
-  gh repo clone "$slug" "$dest" -- --filter=blob:none
+  gh repo clone "$slug" "$dest" -- --filter=blob:none --progress
   echo "✓ on. cd $dest"
 }
 
