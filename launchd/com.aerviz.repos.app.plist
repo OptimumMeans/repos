@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.aerviz.repos.app</string>
+
+  <!-- install.sh rewrites ProgramArguments to the resolved path of
+       menubar/Repos.app's executable. This $HOME form is the manual-install
+       fallback (launchd won't expand ~, but /bin/bash will). -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>exec "$HOME/dev/repos/menubar/Repos.app/Contents/MacOS/Repos"</string>
+  </array>
+
+  <!-- Launch the menu-bar app at login. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/repos-app.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/repos-app.err</string>
+</dict>
+</plist>

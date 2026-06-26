@@ -1,14 +1,16 @@
 # repos — Dropbox-style on/off toggle for GitHub repos
 
-Keep any amount of GitHub repos without keeping them all on disk. The GitHub remote is the
-"cloud" copy; you hydrate only what you're working on. Frees storage on the
-MacBook Neo while keeping every repo one click (or one command) away.
+Keep any number of GitHub repos without keeping them all on disk. The GitHub
+remote is the "cloud" copy; you hydrate only what you're working on. Frees storage
+on the MacBook while keeping every repo one click (or one command) away — via a
+native menu-bar app or the `repo` CLI.
 
 ## Quick start
 
 ```bash
-# prerequisites (Homebrew)
-brew install gh librsvg && brew install --cask swiftbar
+# prerequisites
+xcode-select --install        # Swift compiler for the apps (skip if already installed)
+brew install gh librsvg
 gh auth login
 
 # clone anywhere, then run the installer
@@ -17,23 +19,37 @@ git clone https://github.com/OptimumMeans/repos && cd repos
 ```
 
 `install.sh` is idempotent and location-independent: it links the `repo` CLI onto
-your PATH, builds the notifier app, writes the `gh` token file, points SwiftBar at
-the plugins, and installs + loads the auto-reconnect agent — resolving every path
-from wherever you cloned. Undo it all with `./install.sh uninstall`.
+your PATH, builds the menu-bar app + notifier, writes the `gh` token file, and
+installs two launchd agents (the app at login + the reconnect watcher) — resolving
+every path from wherever you cloned. Undo it all with `./install.sh uninstall`.
 
 ## Components
 
 | File | What it does |
 |------|--------------|
-| `install.sh` | One-shot, idempotent setup: PATH symlink, notifier build, token file, SwiftBar wiring, launchd agent. `./install.sh uninstall` to undo. |
+| `install.sh` | One-shot, idempotent setup: PATH symlink, app + notifier builds, token file, launchd agents. `./install.sh uninstall` to undo. |
 | `repo` | CLI: `repo on/off/list/status`. Symlinked onto PATH at `~/.local/bin/repo`. |
-| `repo-toggle` | Click handler for the menu bar — toggles a repo and shows a macOS notification. |
-| `repo-netwatch` | Runs on network changes: on reconnect, re-checks GitHub auth, refreshes the menu bar, and posts a notification. No manual refresh. |
-| `repo-notify` | Shared notification helper — GitHub-icon app with an osascript fallback. Used by the above and the SwiftBar **Debug** menu. |
-| `launchd/com.aerviz.repos.netwatch.plist` | launchd agent that triggers `repo-netwatch` on wifi/network changes and at login. |
-| `notifier/` | Builds `GitHub Repos.app`, a tiny Swift notifier (Apple `UserNotifications`) so alerts show the GitHub mark, not the Script Editor icon. |
-| `swiftbar-plugins/github.5m.sh` | [SwiftBar](https://swiftbar.app) plugin: GitHub icon in the menu bar, dropdown of repos, click to add/offload. |
-| `swiftbar-plugins/.github-icon.b64` | Base64 GitHub mark (Octicons) used as the menu-bar template image. |
+| `menubar/` | Native SwiftUI menu-bar app (`Repos.app`) — the Dropbox-style UI. Built with `swiftc`. |
+| `repo-netwatch` | Runs on network changes; on reconnect posts a "Back online" notification. |
+| `repo-notify` | Shared notification helper — GitHub-icon app with an osascript fallback. |
+| `notifier/` | Builds `GitHub Repos.app`, a tiny Swift notifier (Apple `UserNotifications`) so alerts show the GitHub mark. |
+| `launchd/` | The two launchd agents: `com.aerviz.repos.app` (app at login) and `com.aerviz.repos.netwatch` (reconnect watcher). |
+
+## Menu-bar app
+
+`Repos.app` is a native SwiftUI `MenuBarExtra` that launches at login. Click its
+menu-bar icon for a popover:
+
+- **Repo list** grouped into **On this Mac** (sticky, at top) and **Cloud only**,
+  each row with size, status, and an on/off **switch** (clone ⇄ offload).
+- **Search** to filter by name.
+- **Clone progress** — a live % bar streamed from git while a repo downloads.
+- **File browser** — click an on-disk repo to browse its files in-app: descend
+  folders, open files in their default app, or jump to Finder.
+- **⋯ menu** — fire a test notification (debug) or quit.
+
+It drives the `repo` CLI underneath and reads the `gh` token from a file so it
+works in the GUI context (a menu-bar process can't read the keychain).
 
 ## CLI usage
 
@@ -54,39 +70,24 @@ Names accept `repo` (your account) or `owner/repo`. Clone location overridable v
 - **Offloading** idle repos removes them from disk entirely. They stay safe on
   GitHub, and `repo off` won't delete anything not yet pushed.
 
-## Menu bar (SwiftBar)
-
-```bash
-brew install --cask swiftbar
-defaults write com.ameba.SwiftBar PluginDirectory "$HOME/dev/repos/swiftbar-plugins"
-open -a SwiftBar
-```
-
-Click the GitHub icon → **On machine** (click to offload) and **Cloud only ▸**
-(click to add). Requires `gh auth login`.
-
 ## Auto-reconnect (no manual refresh)
 
-When the Mac is offline, the menu bar shows **Not logged in** because `gh` can't
-reach GitHub. `repo-netwatch` fixes that without polling or clicking: a launchd
-agent watches `/Library/Preferences/SystemConfiguration` (rewritten on every
-wifi/network change) and fires the watcher. On an offline→online transition it
-re-checks auth, force-refreshes the SwiftBar plugin instantly, and posts a
-**“Back online — Signed in to GitHub ✓”** notification. It also runs once at login.
+When the Mac is offline, `gh` can't reach GitHub. On reconnect everything recovers
+on its own: the app watches connectivity (`NWPathMonitor`) and re-pulls its list,
+and a launchd agent (`repo-netwatch`, watching
+`/Library/Preferences/SystemConfiguration` — rewritten on every network change)
+posts a **"Back online — Signed in to GitHub ✓"** notification. No polling, no clicking.
 
-Notifications carry the GitHub mark instead of the Script Editor icon via a small
-bundled app (`notifier/`). **`./install.sh` builds it and installs the agent for
-you** — that's the recommended path.
+## Notifications
 
-To do it by hand instead: run `notifier/build.sh`, then copy
-`launchd/com.aerviz.repos.netwatch.plist` into `~/Library/LaunchAgents/` and
-`launchctl load` it. launchd won't expand `~` in a program path, so the committed
-plist invokes the watcher as `/bin/bash -c 'exec "$HOME/dev/repos/repo-netwatch"'`
-(assumes the repo at `~/dev/repos`); `install.sh` sidesteps that entirely by
-writing the resolved absolute path of wherever you actually cloned. Unload with
-`launchctl unload <plist>`.
+Alerts show the GitHub mark (not the Script Editor icon) via `notifier/` — a tiny
+signed Swift app posting through Apple's `UserNotifications`. (An `osacompile`
+applet can't register as a notification client on modern macOS; a real signed app
+can.) The first post triggers the one-time "Allow Notifications" prompt, which
+`install.sh` fires during setup.
 
 ## Requirements
 
-`git` (≥2.19 for partial clone), [`gh`](https://cli.github.com), and SwiftBar for the menu bar.
-The notifier app compiles a tiny Swift binary (`swiftc`, from the Xcode Command Line Tools) plus `rsvg-convert`; everything else is macOS built-ins.
+macOS, [`gh`](https://cli.github.com), and the Swift compiler (`swiftc`, from the
+Xcode Command Line Tools) for the apps. `rsvg-convert` (`brew install librsvg`)
+renders the notifier icon. Everything else is macOS built-ins.

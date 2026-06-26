@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 struct Repo: Identifiable, Hashable {
     var id: String { name }
@@ -23,6 +24,15 @@ enum Shell {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("repo").path
         for p in [up, NSHomeDirectory() + "/.local/bin/repo", NSHomeDirectory() + "/dev/repos/repo"]
+            where FileManager.default.isExecutableFile(atPath: p) { return p }
+        return up
+    }()
+
+    static let repoNotify: String = {
+        let up = URL(fileURLWithPath: Bundle.main.bundlePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("repo-notify").path
+        for p in [up, NSHomeDirectory() + "/dev/repos/repo-notify"]
             where FileManager.default.isExecutableFile(atPath: p) { return p }
         return up
     }()
@@ -136,6 +146,22 @@ final class ReposModel: ObservableObject {
     @Published var browseRepo: Repo?
     @Published var browsePath: URL?
 
+    // Auto-reload when the network recovers, so a reconnect needs no manual refresh.
+    private let monitor = NWPathMonitor()
+    private var wasOnline = true
+
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                if online && !self.wasOnline { await self.reload() }
+                self.wasOnline = online
+            }
+        }
+        monitor.start(queue: .global())
+    }
+
     var reposDir: String {
         ProcessInfo.processInfo.environment["REPO_DIR"] ?? (NSHomeDirectory() + "/dev")
     }
@@ -220,4 +246,9 @@ final class ReposModel: ObservableObject {
         else { browsePath = path.deletingLastPathComponent() }
     }
     func closeBrowser() { browseRepo = nil; browsePath = nil }
+
+    // Debug: fire a test notification (carries over the old SwiftBar Debug menu).
+    func notifyTest(_ mode: String) {
+        Task { _ = await Shell.run(Shell.repoNotify, [mode, "Debug", "Notifications are working ✓"], env: [:]) }
+    }
 }

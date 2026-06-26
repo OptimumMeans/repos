@@ -54,8 +54,18 @@ struct PanelView: View {
             if model.loading { ProgressView().controlSize(.small) }
             Button { Task { await model.reload() } } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).help("Refresh")
-            Button { NSApplication.shared.terminate(nil) } label: { Image(systemName: "power") }
-                .buttonStyle(.borderless).help("Quit")
+            Menu {
+                Button("Test notification (GitHub icon)") { model.notifyTest("--app") }
+                Button("Test notification (fallback icon)") { model.notifyTest("--fallback") }
+                Divider()
+                Button("Quit Repos") { NSApplication.shared.terminate(nil) }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 28)
+            .help("More")
         }
         .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
     }

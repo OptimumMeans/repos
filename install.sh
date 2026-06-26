@@ -2,16 +2,14 @@
 # install.sh — set up the `repos` toolkit on this Mac. Idempotent; safe to re-run.
 # Resolves wherever you cloned the repo, so no fixed path is assumed.
 #   ./install.sh            install / update
-#   ./install.sh uninstall  remove the launchd agent + PATH symlink
+#   ./install.sh uninstall  remove the launchd agents + PATH symlink
 set -euo pipefail
 
 REPOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-LABEL="com.aerviz.repos.netwatch"
-AGENT_SRC="$REPOS_DIR/launchd/$LABEL.plist"
-AGENT_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 BIN_DIR="$HOME/.local/bin"
 TOKEN_FILE="$HOME/.config/gh/swiftbar-token"
-PLUGIN_DIR="$REPOS_DIR/swiftbar-plugins"
+NETWATCH=com.aerviz.repos.netwatch
+APP_AGENT=com.aerviz.repos.app
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
@@ -19,15 +17,39 @@ say()  { printf '    %s\n' "$*"; }
 step() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-[ "$(uname)" = "Darwin" ] || { echo "This toolkit is macOS-only (launchd + SwiftBar)."; exit 1; }
+[ "$(uname)" = "Darwin" ] || { echo "This toolkit is macOS-only (launchd + a SwiftUI menu-bar app)."; exit 1; }
+
+# Install (or replace) a launchd agent from a committed plist, rewriting its
+# ProgramArguments to PROG so the path matches wherever the repo was cloned.
+install_agent() { # label, src_plist, program_path
+  local label="$1" src="$2" prog="$3"
+  local dst="$HOME/Library/LaunchAgents/$label.plist"
+  mkdir -p "$(dirname "$dst")"
+  launchctl unload "$dst" 2>/dev/null || true
+  rm -f "$dst"
+  cp "$src" "$dst"
+  /usr/libexec/PlistBuddy -c "Delete :ProgramArguments" "$dst" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :ProgramArguments array" "$dst"
+  /usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string $prog" "$dst"
+  launchctl load "$dst"
+  # plain grep (not -q): -q closes the pipe early, SIGPIPEs launchctl, and
+  # pipefail would then flag a false negative.
+  if launchctl list | grep "$label" >/dev/null; then ok "agent loaded ($label)"; else warn "agent did not load ($label)"; fi
+}
+
+remove_agent() { # label
+  local dst="$HOME/Library/LaunchAgents/$1.plist"
+  launchctl unload "$dst" 2>/dev/null || true
+  rm -f "$dst"
+}
 
 # ---------------------------------------------------------------- uninstall ---
 if [ "${1:-}" = "uninstall" ]; then
   step "Uninstalling"
-  launchctl unload "$AGENT_DST" 2>/dev/null || true
-  rm -f "$AGENT_DST"; ok "removed launchd agent"
+  remove_agent "$APP_AGENT"; pkill -x Repos 2>/dev/null || true; ok "removed menu-bar app agent + quit Repos"
+  remove_agent "$NETWATCH"; ok "removed reconnect agent"
   if [ -L "$BIN_DIR/repo" ]; then rm -f "$BIN_DIR/repo"; ok "removed repo PATH symlink"; fi
-  say "Left in place (harmless): token file, built notifier app, SwiftBar plugin-dir pref."
+  say "Left in place (harmless): token file, built apps."
   exit 0
 fi
 
@@ -41,12 +63,12 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 ok "gh present"
-have rsvg-convert || warn "rsvg-convert missing — notifier will fall back to the Script Editor icon (brew install librsvg)"
-[ -d "/Applications/SwiftBar.app" ] || warn "SwiftBar not installed — the menu bar won't appear (brew install --cask swiftbar)"
+have swiftc || warn "swiftc missing — the menu-bar app + notifier need Xcode Command Line Tools (xcode-select --install)"
+have rsvg-convert || warn "rsvg-convert missing — notifier falls back to the Script Editor icon (brew install librsvg)"
 
 # Git usually preserves the +x bit, but restore it just in case.
-chmod +x "$REPOS_DIR/repo" "$REPOS_DIR/repo-toggle" "$REPOS_DIR/repo-netwatch" \
-         "$REPOS_DIR/repo-notify" "$REPOS_DIR/notifier/build.sh" 2>/dev/null || true
+chmod +x "$REPOS_DIR/repo" "$REPOS_DIR/repo-netwatch" "$REPOS_DIR/repo-notify" \
+         "$REPOS_DIR/notifier/build.sh" "$REPOS_DIR/menubar/build.sh" 2>/dev/null || true
 
 # --------------------------------------------------------- repo CLI on PATH ---
 step "Linking the repo CLI onto PATH"
@@ -77,6 +99,14 @@ else
   warn "skipped (needs rsvg-convert + swiftc) — notifications fall back to the Script Editor icon"
 fi
 
+# --------------------------------------------------------- menu-bar app -------
+step "Building the Repos menu-bar app"
+if have swiftc; then
+  if "$REPOS_DIR/menubar/build.sh" >/dev/null 2>&1; then ok 'built "Repos.app"'; else warn "menu-bar app build failed"; fi
+else
+  warn "skipped — no swiftc (xcode-select --install)"
+fi
+
 # ------------------------------------------------------------- token file -----
 # Lets gh authenticate from the menu-bar/launchd context, which can't read the
 # keychain. `gh auth token` prints the active token if you're already logged in.
@@ -92,41 +122,17 @@ else
   say  "then: gh auth token > $TOKEN_FILE && chmod 600 $TOKEN_FILE"
 fi
 
-# ------------------------------------------------------ SwiftBar plugin dir ---
-step "Pointing SwiftBar at the plugins"
-if [ -d "/Applications/SwiftBar.app" ]; then
-  defaults write com.ameba.SwiftBar PluginDirectory "$PLUGIN_DIR"
-  ok "PluginDirectory = $PLUGIN_DIR"
-  if pgrep -x SwiftBar >/dev/null; then
-    osascript -e 'quit app "SwiftBar"' >/dev/null 2>&1 || true
-    sleep 1
-  fi
-  open -a SwiftBar >/dev/null 2>&1 || true
-  ok "SwiftBar (re)started"
-else
-  warn "SwiftBar not installed — skipped"
-fi
+# ----------------------------------------------------------- launchd agents ---
+step "Installing the menu-bar app (launch at login)"
+pkill -x Repos 2>/dev/null || true   # avoid a duplicate instance; the agent relaunches it
+install_agent "$APP_AGENT" "$REPOS_DIR/launchd/$APP_AGENT.plist" \
+              "$REPOS_DIR/menubar/Repos.app/Contents/MacOS/Repos"
 
-# --------------------------------------------------------- launchd agent ------
-# Start from the committed plist but replace ProgramArguments with THIS clone's
-# absolute path, so the install works no matter where the repo was cloned.
 step "Installing the auto-reconnect agent"
-mkdir -p "$(dirname "$AGENT_DST")"
-launchctl unload "$AGENT_DST" 2>/dev/null || true
-rm -f "$AGENT_DST"
-cp "$AGENT_SRC" "$AGENT_DST"
-/usr/libexec/PlistBuddy -c "Delete :ProgramArguments" "$AGENT_DST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :ProgramArguments array" "$AGENT_DST"
-/usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string $REPOS_DIR/repo-netwatch" "$AGENT_DST"
-launchctl load "$AGENT_DST"
-# Note: plain grep (not grep -q) so it reads to EOF — grep -q would close the
-# pipe early, SIGPIPE launchctl, and pipefail would flag a false negative.
-if launchctl list | grep "$LABEL" >/dev/null; then
-  ok "agent loaded ($LABEL)"
-else
-  warn "agent did not load — check: launchctl list | grep repos"
-fi
+install_agent "$NETWATCH" "$REPOS_DIR/launchd/$NETWATCH.plist" \
+              "$REPOS_DIR/repo-netwatch"
 
 step "Done"
-say "Auto-reconnect is live. Flip wifi off then on to see the menu bar refresh + a notification."
+say "The Repos app is in your menu bar now and will start at login."
+say "Auto-reconnect notifications are live — no manual refresh."
 say "Uninstall any time with:  ./install.sh uninstall"
