@@ -64,4 +64,10 @@ printf "%b" "$cloud_lines"
 
 echo "---"
 echo "Refresh | refresh=true"
+
+# --- Debug (submenu): fire a test notification to check the notification path ---
+echo "Debug | size=12 color=gray"
+echo "-- Test notification (GitHub icon) | bash=\"$HERE/../repo-notify\" param1=--app param2=Debug param3=\"Notifications are working ✓\" terminal=false"
+echo "-- Test notification (fallback icon) | bash=\"$HERE/../repo-notify\" param1=--fallback param2=Debug param3=\"Notifications are working ✓\" terminal=false"
+
 echo "Open ~/dev | bash=/usr/bin/open param1=$REPO_DIR terminal=false"

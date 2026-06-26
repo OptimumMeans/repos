@@ -46,7 +46,7 @@ have rsvg-convert || warn "rsvg-convert missing — notifier will fall back to t
 
 # Git usually preserves the +x bit, but restore it just in case.
 chmod +x "$REPOS_DIR/repo" "$REPOS_DIR/repo-toggle" "$REPOS_DIR/repo-netwatch" \
-         "$REPOS_DIR/notifier/build.sh" 2>/dev/null || true
+         "$REPOS_DIR/repo-notify" "$REPOS_DIR/notifier/build.sh" 2>/dev/null || true
 
 # --------------------------------------------------------- repo CLI on PATH ---
 step "Linking the repo CLI onto PATH"
@@ -60,14 +60,21 @@ esac
 
 # ------------------------------------------------------------- notifier app ---
 step "Building the GitHub-icon notifier"
-if have rsvg-convert; then
+if have rsvg-convert && have swiftc; then
   if "$REPOS_DIR/notifier/build.sh" >/dev/null 2>&1; then
     ok 'built "GitHub Repos.app"'
+    # Fire once now so the one-time macOS "Allow Notifications" prompt appears
+    # while you're here, establishing authorization before the first reconnect.
+    if "$REPOS_DIR/repo-notify" --app "Setup" "Notifications enabled ✓" >/dev/null 2>&1; then
+      ok "notifications authorized"
+    else
+      warn "if macOS shows a notification prompt, click Allow (else alerts use the default icon)"
+    fi
   else
-    warn "notifier build failed — notifications will use the default icon"
+    warn "notifier build failed — notifications fall back to the Script Editor icon"
   fi
 else
-  warn "skipped — no rsvg-convert"
+  warn "skipped (needs rsvg-convert + swiftc) — notifications fall back to the Script Editor icon"
 fi
 
 # ------------------------------------------------------------- token file -----

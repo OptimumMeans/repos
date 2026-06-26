@@ -16,16 +16,8 @@ PLUGIN_NAME="github"                       # matches swiftbar-plugins/github.5m.
 STATE_FILE="$HOME/.cache/repos/netwatch.state"
 mkdir -p "$(dirname "$STATE_FILE")"
 
-# Notify via the bundled app so the alert shows the GitHub mark instead of the
-# Script Editor icon; fall back to raw osascript if the app isn't built.
-NOTIFIER="$(cd "$(dirname "$0")" && pwd)/notifier/GitHub Repos.app"
-notify() { # subtitle, message
-  if [ -d "$NOTIFIER" ]; then
-    open -gjn "$NOTIFIER" --args "GitHub Repos" "$1" "$2" >/dev/null 2>&1
-  else
-    osascript -e "display notification \"$2\" with title \"GitHub Repos\" subtitle \"$1\"" >/dev/null 2>&1
-  fi
-}
+# All notifications go through repo-notify (GitHub-icon app, osascript fallback).
+notify() { "$(cd "$(dirname "$0")" && pwd)/repo-notify" "$1" "$2"; }  # subtitle, message
 
 # A single wifi/network change fires WatchPaths several times in a burst — let
 # the interface settle so the connectivity check reflects the final state.
