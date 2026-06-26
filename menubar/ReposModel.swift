@@ -132,6 +132,10 @@ final class ReposModel: ObservableObject {
     @Published var progress: [String: Double] = [:]   // name -> 0...1 while cloning
     @Published var error: String?
 
+    // In-app file browser navigation (nil browseRepo == repo list view).
+    @Published var browseRepo: Repo?
+    @Published var browsePath: URL?
+
     var reposDir: String {
         ProcessInfo.processInfo.environment["REPO_DIR"] ?? (NSHomeDirectory() + "/dev")
     }
@@ -201,4 +205,19 @@ final class ReposModel: ObservableObject {
     private func setOnDisk(_ name: String, _ value: Bool) {
         if let i = repos.firstIndex(where: { $0.id == name }) { repos[i].onDisk = value }
     }
+
+    // MARK: - file browser navigation
+    func open(_ repo: Repo) {
+        guard repo.onDisk else { return }
+        browseRepo = repo
+        browsePath = URL(fileURLWithPath: reposDir + "/" + repo.name)
+    }
+    func descend(into url: URL) { browsePath = url }
+    func ascend() {
+        guard let repo = browseRepo, let path = browsePath else { return }
+        let root = URL(fileURLWithPath: reposDir + "/" + repo.name).standardizedFileURL
+        if path.standardizedFileURL == root { closeBrowser() }
+        else { browsePath = path.deletingLastPathComponent() }
+    }
+    func closeBrowser() { browseRepo = nil; browsePath = nil }
 }

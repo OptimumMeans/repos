@@ -5,15 +5,45 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            searchField
-            Divider()
-            content
-            Divider()
-            footer
+            if let repo = model.browseRepo, let path = model.browsePath {
+                browserHeader(repo, path)
+                Divider()
+                FileBrowserView(path: path)
+            } else {
+                header
+                searchField
+                Divider()
+                content
+                Divider()
+                footer
+            }
         }
         .frame(width: 360)
         .task { if model.repos.isEmpty { await model.reload() } }
+    }
+
+    private func browserHeader(_ repo: Repo, _ path: URL) -> some View {
+        HStack(spacing: 8) {
+            Button { model.ascend() } label: { Image(systemName: "chevron.left") }
+                .buttonStyle(.borderless).help("Up / back")
+            VStack(alignment: .leading, spacing: 0) {
+                Text(repo.name).font(.headline)
+                Text(crumb(repo, path)).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.head)
+            }
+            Spacer()
+            Button { NSWorkspace.shared.open(path) } label: { Image(systemName: "arrow.up.forward.app") }
+                .buttonStyle(.borderless).help("Open in Finder")
+            Button { model.closeBrowser() } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless).help("Back to repos")
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+
+    private func crumb(_ repo: Repo, _ path: URL) -> String {
+        let root = URL(fileURLWithPath: model.reposDir + "/" + repo.name).standardizedFileURL.path
+        let rel = path.standardizedFileURL.path.replacingOccurrences(of: root, with: "")
+        return rel.isEmpty ? "/" : rel
     }
 
     private var header: some View {
@@ -125,19 +155,30 @@ struct RepoRow: View {
     var body: some View {
         let r = current
         HStack(spacing: 10) {
-            Circle()
-                .fill(r.onDisk ? Color.green : Color.secondary.opacity(0.35))
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(r.name).font(.body)
-                Text(r.onDisk ? "On this Mac · \(r.sizeMB) MB" : "Cloud only · \(r.sizeMB) MB")
-                    .font(.caption).foregroundStyle(.secondary)
+            Button { if r.onDisk { model.open(r) } } label: {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(r.onDisk ? Color.green : Color.secondary.opacity(0.35))
+                        .frame(width: 8, height: 8)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.name).font(.body)
+                        Text(r.onDisk ? "On this Mac · \(r.sizeMB) MB" : "Cloud only · \(r.sizeMB) MB")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
+            .disabled(!r.onDisk)
+            .help(r.onDisk ? "Browse files" : "")
+
+            if r.onDisk {
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+            }
             trailing(r)
         }
         .padding(.horizontal, 14).padding(.vertical, 7)
-        .contentShape(Rectangle())
     }
 
     @ViewBuilder private func trailing(_ r: Repo) -> some View {
