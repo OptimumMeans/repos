@@ -10,8 +10,15 @@ TOKEN_FILE="$HOME/.config/gh/swiftbar-token"
 [ -r "$TOKEN_FILE" ] && export GH_TOKEN="$(cat "$TOKEN_FILE")"
 
 action="${1:-}"; name="${2:-}"
+# Notify via the bundled app so the alert shows the GitHub mark instead of the
+# Script Editor icon; fall back to raw osascript if the app isn't built.
+NOTIFIER="$(cd "$(dirname "$0")" && pwd)/notifier/GitHub Repos.app"
 notify() { # subtitle, message
-  osascript -e "display notification \"$2\" with title \"GitHub Repos\" subtitle \"$1\"" >/dev/null 2>&1
+  if [ -d "$NOTIFIER" ]; then
+    open -gjn "$NOTIFIER" --args "GitHub Repos" "$1" "$2" >/dev/null 2>&1
+  else
+    osascript -e "display notification \"$2\" with title \"GitHub Repos\" subtitle \"$1\"" >/dev/null 2>&1
+  fi
 }
 
 case "$action" in

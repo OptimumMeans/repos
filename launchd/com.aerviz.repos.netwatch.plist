@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.aerviz.repos.netwatch</string>
+
+  <!-- launchd won't expand ~ or env vars, but /bin/bash is a fixed path and can.
+       Keeps this file portable: the only assumption is repo at ~/dev/repos. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>exec "$HOME/dev/repos/repo-netwatch"</string>
+  </array>
+
+  <!-- launchd fires the agent whenever anything in this directory changes;
+       macOS rewrites these files on every wifi/network transition. -->
+  <key>WatchPaths</key>
+  <array>
+    <string>/Library/Preferences/SystemConfiguration</string>
+  </array>
+
+  <!-- Also run once at login so the menu bar is correct from the first second. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/repos-netwatch.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/repos-netwatch.err</string>
+</dict>
+</plist>
