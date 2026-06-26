@@ -29,8 +29,9 @@ from wherever you cloned. Undo it all with `./install.sh uninstall`.
 | `repo` | CLI: `repo on/off/list/status`. Symlinked onto PATH at `~/.local/bin/repo`. |
 | `repo-toggle` | Click handler for the menu bar — toggles a repo and shows a macOS notification. |
 | `repo-netwatch` | Runs on network changes: on reconnect, re-checks GitHub auth, refreshes the menu bar, and posts a notification. No manual refresh. |
+| `repo-notify` | Shared notification helper — GitHub-icon app with an osascript fallback. Used by the above and the SwiftBar **Debug** menu. |
 | `launchd/com.aerviz.repos.netwatch.plist` | launchd agent that triggers `repo-netwatch` on wifi/network changes and at login. |
-| `notifier/` | Builds `GitHub Repos.app`, a tiny background notifier so alerts show the GitHub mark (not the Script Editor icon). |
+| `notifier/` | Builds `GitHub Repos.app`, a tiny Swift notifier (Apple `UserNotifications`) so alerts show the GitHub mark, not the Script Editor icon. |
 | `swiftbar-plugins/github.5m.sh` | [SwiftBar](https://swiftbar.app) plugin: GitHub icon in the menu bar, dropdown of repos, click to add/offload. |
 | `swiftbar-plugins/.github-icon.b64` | Base64 GitHub mark (Octicons) used as the menu-bar template image. |
 
@@ -88,4 +89,4 @@ writing the resolved absolute path of wherever you actually cloned. Unload with
 ## Requirements
 
 `git` (≥2.19 for partial clone), [`gh`](https://cli.github.com), and SwiftBar for the menu bar.
-The notifier app builds with macOS built-ins (`osacompile`, `sips`, `iconutil`) plus `rsvg-convert`.
+The notifier app compiles a tiny Swift binary (`swiftc`, from the Xcode Command Line Tools) plus `rsvg-convert`; everything else is macOS built-ins.

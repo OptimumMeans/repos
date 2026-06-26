@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# repo-notify — single source of truth for every "GitHub Repos" notification in
+# the toolkit (repo-netwatch, repo-toggle, the SwiftBar Debug menu). Shows the
+# GitHub icon via the bundled Swift app, falling back to osascript (Script Editor
+# icon) when the app is missing or unauthorized.
+#   repo-notify <subtitle> <message>             production: app → osascript
+#   repo-notify --app <subtitle> <message>       force the app path (debug)
+#   repo-notify --fallback <subtitle> <message>  force osascript (debug)
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+BIN="$HERE/notifier/GitHub Repos.app/Contents/MacOS/GitHubNotify"
+TITLE="GitHub Repos"
+
+mode=auto
+case "${1:-}" in
+  --app)      mode=app;      shift ;;
+  --fallback) mode=fallback; shift ;;
+esac
+sub="${1:-}"; msg="${2:-}"
+
+app()      { [ -x "$BIN" ] && "$BIN" "$TITLE" "$sub" "$msg" >/dev/null 2>&1; }
+fallback() { osascript -e "display notification \"$msg\" with title \"$TITLE\" subtitle \"$sub\"" >/dev/null 2>&1; }
+
+case "$mode" in
+  app)      app ;;            # pure, no fallback — so you can see if the app path works
+  fallback) fallback ;;
+  *)        app || fallback ;;
+esac
