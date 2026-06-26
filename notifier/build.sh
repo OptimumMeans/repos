@@ -40,9 +40,15 @@ plist_set() { # key, type, value — add if missing, else overwrite
 }
 plist_set CFBundleIdentifier string "$BUNDLE_ID"
 plist_set LSUIElement bool true
-touch "$APP"
 
-# 4. Register with LaunchServices so the new icon/identity is picked up now.
+# 4. Re-sign (ad-hoc). osacompile's applet ships signed by Apple; editing
+#    Info.plist and swapping the icon breaks that signature, and macOS's
+#    notification daemon (usernotificationsd) silently DROPS notifications from
+#    a bundle whose signature no longer matches its contents. `-s -` re-seals it
+#    ad-hoc, keyed to the bundle id, so the app can post and permission is stable.
+codesign --force --deep -s - "$APP"
+
+# 5. Register with LaunchServices so the new icon/identity is picked up now.
 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
   -f "$APP"
 
