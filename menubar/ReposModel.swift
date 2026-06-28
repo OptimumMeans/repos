@@ -186,7 +186,10 @@ final class ReposModel: ObservableObject {
             env: ["GH_TOKEN": token])
         guard status == 0 else { error = "gh repo list failed: " + Shell.lastLine(err); return }
 
-        struct GHRepo: Decodable { let name: String; let nameWithOwner: String; let diskUsage: Int }
+        // diskUsage is nullable in GitHub's API — a freshly created repo returns
+        // null until the size is computed. Keep it optional so one new repo can't
+        // fail the whole array decode and blank the list.
+        struct GHRepo: Decodable { let name: String; let nameWithOwner: String; let diskUsage: Int? }
         guard let data = out.data(using: .utf8),
               let list = try? JSONDecoder().decode([GHRepo].self, from: data) else {
             error = "couldn't parse gh output"; return
@@ -194,7 +197,7 @@ final class ReposModel: ObservableObject {
         let fm = FileManager.default
         let dir = reposDir
         repos = list.map {
-            Repo(name: $0.name, nameWithOwner: $0.nameWithOwner, sizeMB: $0.diskUsage / 1024,
+            Repo(name: $0.name, nameWithOwner: $0.nameWithOwner, sizeMB: ($0.diskUsage ?? 0) / 1024,
                  onDisk: fm.fileExists(atPath: dir + "/" + $0.name + "/.git"))
         }.sorted { $0.name.lowercased() < $1.name.lowercased() }
         error = nil
