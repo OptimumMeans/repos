@@ -98,9 +98,18 @@ struct PanelView: View {
                         section("Cloud only", model.cloudFiltered)
                     }
                 }
-                .frame(maxHeight: 400)
+                // MenuBarExtra(.window) sizes to the content's ideal height, and a
+                // ScrollView has none, so it collapses to zero without an explicit
+                // height. Estimate from row count, capped at 400 like the old max.
+                .frame(height: listHeight)
             }
         }
+    }
+
+    private var listHeight: CGFloat {
+        let rows = model.onDiskFiltered.count + model.cloudFiltered.count
+        let headers = [model.onDiskFiltered, model.cloudFiltered].filter { !$0.isEmpty }.count
+        return min(400, CGFloat(rows) * 46 + CGFloat(headers) * 25)
     }
 
     @ViewBuilder private func section(_ title: String, _ repos: [Repo]) -> some View {
