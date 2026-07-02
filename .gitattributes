@@ -1,0 +1,4 @@
+# Windows script files must check out with CRLF regardless of core.autocrlf.
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.ps1 text eol=crlf
