@@ -1,0 +1,119 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="340" SizeToContent="Height" ShowInTaskbar="False"
+    WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+    ResizeMode="NoResize" Topmost="True" Title="Repos">
+  <Window.Resources>
+    <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Border x:Name="track" Width="38" Height="22" CornerRadius="11"
+                    Background="#D0D3D9">
+              <Border x:Name="thumb" Width="18" Height="18" CornerRadius="9"
+                      Background="White" HorizontalAlignment="Left" Margin="2,0,0,0"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="track" Property="Background" Value="#2F80ED"/>
+                <Setter TargetName="thumb" Property="HorizontalAlignment" Value="Right"/>
+                <Setter TargetName="thumb" Property="Margin" Value="0,0,2,0"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="FooterButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="#333333"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="#EEF1F5"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Border x:Name="Card" Margin="12" CornerRadius="12" Background="White">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.30" Color="#000000"/>
+    </Border.Effect>
+    <Grid Margin="0">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <!-- header -->
+      <StackPanel Grid.Row="0" Margin="16,14,16,6">
+        <TextBlock Text="Repos" FontSize="16" FontWeight="SemiBold" Foreground="#1A1A1A"/>
+        <TextBlock x:Name="SummaryText" Text="" FontSize="12" Foreground="#8A8F98" Margin="0,2,0,0"/>
+      </StackPanel>
+
+      <!-- search -->
+      <Border Grid.Row="1" Margin="16,4,16,8" CornerRadius="8" Background="#F1F3F6">
+        <TextBox x:Name="SearchBox" BorderThickness="0" Background="Transparent"
+                 Padding="10,7" FontSize="13" VerticalContentAlignment="Center"/>
+      </Border>
+
+      <!-- error row (collapsed unless set) -->
+      <TextBlock x:Name="ErrorText" Grid.Row="2" Margin="16,0,16,6" FontSize="12"
+                 Foreground="#C0392B" TextWrapping="Wrap" Visibility="Collapsed"/>
+
+      <!-- list view -->
+      <ScrollViewer x:Name="ListView" Grid.Row="3" VerticalScrollBarVisibility="Auto"
+                    MaxHeight="420" Margin="0,0,0,4">
+        <StackPanel x:Name="RepoListPanel" Margin="8,0"/>
+      </ScrollViewer>
+
+      <!-- browse view (collapsed by default) -->
+      <Grid x:Name="BrowseView" Grid.Row="3" Visibility="Collapsed" Margin="0,0,0,4">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="12,2,12,6">
+          <Button x:Name="BackButton" Style="{StaticResource FooterButton}" Content="&#xE72B;"
+                  FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+          <TextBlock x:Name="BreadcrumbText" Margin="8,0,0,0" VerticalAlignment="Center"
+                     FontSize="13" Foreground="#333333" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="360">
+          <StackPanel x:Name="FileListPanel" Margin="8,0"/>
+        </ScrollViewer>
+        <Button Grid.Row="2" x:Name="OpenFolderButton" Style="{StaticResource FooterButton}"
+                HorizontalAlignment="Left" Margin="8,4,0,0" Content="Open in Explorer"/>
+      </Grid>
+
+      <!-- footer -->
+      <Border Grid.Row="4" BorderBrush="#ECEEF1" BorderThickness="0,1,0,0" Padding="8,6">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="RefreshButton" Style="{StaticResource FooterButton}" Content="Refresh"/>
+          <Button x:Name="OpenDirButton" Style="{StaticResource FooterButton}" Content="Open folder"/>
+          <Button x:Name="QuitButton" Style="{StaticResource FooterButton}" Content="Quit"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</Window>
