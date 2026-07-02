@@ -17,7 +17,7 @@ say()  { printf '    %s\n' "$*"; }
 step() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-[ "$(uname)" = "Darwin" ] || { echo "This toolkit is macOS-only (launchd + a SwiftUI menu-bar app)."; exit 1; }
+[ "$(uname)" = "Darwin" ] || { echo "This is the macOS installer. On Windows run: powershell -ExecutionPolicy Bypass -File windows\\install.ps1"; exit 1; }
 
 # Install (or replace) a launchd agent from a committed plist, rewriting its
 # ProgramArguments to PROG so the path matches wherever the repo was cloned.
