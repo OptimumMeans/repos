@@ -55,14 +55,25 @@ Needs only built-in Windows PowerShell 5.1, no extra toolchain.
 
 ## The app (Windows)
 
-The tray icon's menu is the same idea, tray-menu shaped:
+The tray icon opens a Dropbox-style flyout panel (left-click the icon; it hides
+when you click away):
 
-- Repos split into **On this PC** (checked items) and a **Cloud only** submenu;
-  click a repo to clone or offload it. Clones run in the background with balloon
-  notifications when they finish (or refuse, e.g. unpushed work).
-- Header line with local count, disk usage, and total.
-- **Refresh**, **Open ~\dev**, and auto-refresh with a "Back online" balloon when
-  the network comes back (the netwatch agent is built into the tray app).
+- Repos split into **On this PC** and **Cloud only**, each row with a size and an
+  on/off **toggle switch** - flip it to clone or offload. A spinner shows on the
+  row while it works, with a balloon when it finishes (or refuses, e.g. unpushed
+  work).
+- **Search** to filter by name, and a header line with the local count and disk
+  usage.
+- **Browse files** - click an on-disk repo to walk its files in the panel, open a
+  file in its default app, or jump to Explorer.
+- **Repo actions** - right-click a row to Open in Explorer, Copy clone URL, or
+  Open on GitHub.
+- **Refresh** and **Open folder** in the footer, plus auto-refresh with a "Back
+  online" balloon when the network returns.
+- Local folders are matched to GitHub repos by name, ignoring case and
+  punctuation (a `dashd` folder counts as `Dash-d`), and offload/browse always
+  act on the real folder. Point `REPO_DIR` (user environment variable) at the
+  directory that holds your clones.
 
 ## CLI
 
