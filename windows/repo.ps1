@@ -16,13 +16,6 @@ function Have($name) { [bool](Get-Command $name -ErrorAction SilentlyContinue) }
 if (-not (Have gh))  { Die 'GitHub CLI (gh) not found. Install with: winget install GitHub.cli' }
 if (-not (Have git)) { Die 'git not found. Install with: winget install Git.Git' }
 
-# Optional parity with the Mac side: a token file lets gh run from contexts
-# without its own config. On Windows gh auth is file-based, so this is a bonus.
-$tokenFile = Join-Path $HOME '.config\gh\swiftbar-token'
-if ((-not $env:GH_TOKEN) -and (Test-Path $tokenFile)) {
-    $env:GH_TOKEN = (Get-Content -Raw $tokenFile).Trim()
-}
-
 # Resolve a user-typed name to owner/repo. Bare names use your default gh account.
 function Resolve-Slug($name) {
     if ($name -like '*/*') { return $name }
@@ -39,7 +32,9 @@ function Cmd-On($name) {
     if (Test-Path $dest) { Die "$dest already exists (already on). Use: cd $dest" }
     New-Item -ItemType Directory -Force -Path $RepoDir | Out-Null
     Write-Host "Cloning $slug -> $dest (blobless partial clone)..."
-    & gh repo clone $slug $dest -- --filter=blob:none --progress
+    # '--' must be quoted: bare -- is PowerShell's own end-of-parameters token
+    # and gets eaten by the parser instead of reaching gh.
+    & gh repo clone $slug $dest '--' --filter=blob:none --progress
     if ($LASTEXITCODE -ne 0) { Die "clone failed" }
     Write-Host "OK: on. cd $dest"
 }

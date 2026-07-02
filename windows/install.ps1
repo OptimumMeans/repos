@@ -6,7 +6,6 @@ param([string]$Action = 'install')
 
 $ErrorActionPreference = 'Stop'
 $Here = $PSScriptRoot
-$TokenFile = Join-Path $HOME '.config\gh\swiftbar-token'
 $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'Repos Tray.lnk'
 
 function Ok($msg)   { Write-Host "  [OK] $msg" -ForegroundColor Green }
@@ -22,17 +21,36 @@ function Stop-Tray {
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
-function Get-UserPath { [Environment]::GetEnvironmentVariable('Path', 'User') }
+# Read/write the user Path via the registry so REG_EXPAND_SZ entries keep
+# their %VAR% text and value type; [Environment]::SetEnvironmentVariable would
+# expand and flatten every entry. Returns '' (never null) when unset.
+function Get-UserPath {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+    if ($key) {
+        [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    } else { '' }
+}
+function Set-UserPath($value) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    $key.SetValue('Path', $value, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    # A raw registry write doesn't broadcast WM_SETTINGCHANGE; setting and
+    # deleting a throwaway variable does, so new shells see the change.
+    [Environment]::SetEnvironmentVariable('REPOS_SETTINGCHANGE', '1', 'User')
+    [Environment]::SetEnvironmentVariable('REPOS_SETTINGCHANGE', $null, 'User')
+}
 
 # ---------------------------------------------------------------- uninstall ---
 if ($Action -eq 'uninstall') {
     Step 'Uninstalling'
     Stop-Tray; Ok 'quit the tray app'
     if (Test-Path $ShortcutPath) { Remove-Item $ShortcutPath; Ok 'removed startup shortcut' }
-    $parts = (Get-UserPath) -split ';' | Where-Object { $_ -and $_ -ne $Here }
-    [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')
-    Ok 'removed repo CLI from PATH'
-    Say 'Left in place (harmless): token file.'
+    $parts = @((Get-UserPath) -split ';' | Where-Object { $_ })
+    if ($parts -contains $Here) {
+        Set-UserPath (($parts | Where-Object { $_ -ne $Here }) -join ';')
+        Ok 'removed repo CLI from PATH'
+    } else {
+        Ok 'repo CLI was not on PATH'
+    }
     exit 0
 }
 
@@ -50,28 +68,26 @@ Ok 'gh and git present'
 
 # --------------------------------------------------------- repo CLI on PATH ---
 Step 'Putting the repo CLI on PATH'
-$userPath = Get-UserPath
-if (($userPath -split ';') -notcontains $Here) {
-    [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $Here), 'User')
+$parts = @((Get-UserPath) -split ';' | Where-Object { $_ })
+if ($parts -notcontains $Here) {
+    Set-UserPath (($parts + $Here) -join ';')
     Ok "added $Here to your user PATH (new shells pick it up)"
 } else {
     Ok "$Here already on PATH"
 }
 
-# ------------------------------------------------------------- token file -----
-# Parity with the Mac side; also covers contexts where gh's own config is not
-# readable. `gh auth token` prints the active token if you're logged in.
-Step 'Writing the GitHub token file'
+# ------------------------------------------------------------- GitHub auth ----
+# Unlike macOS there's no keychain problem here: gh's own credential store is
+# readable from the tray and the CLI, so no token file - just check the login.
+Step 'Checking GitHub auth'
 # cmd /c does the stderr redirect at the OS level; an in-session 2>$null with
 # EAP Stop would turn gh's "not logged in" stderr into a terminating error.
-$token = @(& cmd /c 'gh auth token 2>nul') | Select-Object -First 1
-if ($LASTEXITCODE -eq 0 -and $token) {
-    New-Item -ItemType Directory -Force -Path (Split-Path $TokenFile) | Out-Null
-    Set-Content -Path $TokenFile -Value $token -NoNewline -Encoding Ascii
-    Ok "wrote $TokenFile"
+& cmd /c 'gh auth status >nul 2>nul'
+if ($LASTEXITCODE -eq 0) {
+    Ok 'gh is authenticated'
 } else {
-    Warn 'not logged in to GitHub'
-    Say  'run: gh auth login   then re-run this installer'
+    Warn 'not logged in to GitHub - the app will show an empty list'
+    Say  'run: gh auth login'
 }
 
 # ----------------------------------------------------- tray app at login ------

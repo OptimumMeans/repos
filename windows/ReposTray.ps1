@@ -31,10 +31,6 @@ function Test-OnDisk($name) {
 # Fetch the repo list from GitHub. Inline (blocks the pump ~1-2s) - only runs
 # at startup, on explicit Refresh, and on reconnect.
 function Update-Repos {
-    $tokenFile = Join-Path $HOME '.config\gh\swiftbar-token'
-    if ((-not $env:GH_TOKEN) -and (Test-Path $tokenFile)) {
-        $env:GH_TOKEN = (Get-Content -Raw $tokenFile).Trim()
-    }
     $json = & gh repo list --limit 200 --json name,nameWithOwner,diskUsage 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $json) {
         $script:fetchError = 'gh repo list failed - check gh auth login'
@@ -117,8 +113,11 @@ function Add-RepoItem($into, $repo) {
     $item = New-Object System.Windows.Forms.ToolStripMenuItem($label)
     $item.Checked = $repo.OnDisk
     $item.Enabled = -not $script:jobs.ContainsKey($repo.Name)
-    $name = $repo.Name
-    $item.Add_Click({ Start-Toggle $name }.GetNewClosure())
+    # Plain scriptblock, not GetNewClosure(): a closure binds to a fresh module
+    # whose scope chain skips script-scoped functions, so Start-Toggle wouldn't
+    # resolve when the script is run directly. $args[0] is the sender.
+    $item.Tag = $repo.Name
+    $item.Add_Click({ Start-Toggle $args[0].Tag })
     [void]$into.Add($item)
 }
 

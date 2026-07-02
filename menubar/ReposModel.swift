@@ -186,7 +186,7 @@ final class ReposModel: ObservableObject {
             env: ["GH_TOKEN": token])
         guard status == 0 else { error = "gh repo list failed: " + Shell.lastLine(err); return }
 
-        // diskUsage is nullable in GitHub's API — a freshly created repo returns
+        // diskUsage is nullable in GitHub's API - a freshly created repo returns
         // null until the size is computed. Keep it optional so one new repo can't
         // fail the whole array decode and blank the list.
         struct GHRepo: Decodable { let name: String; let nameWithOwner: String; let diskUsage: Int? }
