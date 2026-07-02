@@ -66,7 +66,7 @@ The tray icon's menu is the same idea, tray-menu shaped:
 
 ## CLI
 
-The same engine, from the terminal — identical commands on both platforms
+The same engine, from the terminal. Identical commands on both platforms
 (`windows\repo.ps1` via the `repo` shim on Windows):
 
 ```bash
