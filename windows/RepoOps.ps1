@@ -13,9 +13,41 @@ function Format-SizeMB {
     [int][math]::Floor($Kilobytes / 1024)
 }
 
+function Get-NormalizedName {
+    # Lowercase and strip anything that is not a letter or digit, so folder names
+    # that differ only in punctuation/case from the GitHub name still match:
+    # "Dash-d" and "dashd" both normalize to "dashd".
+    param([string]$Name)
+    ($Name -replace '[^a-zA-Z0-9]', '').ToLowerInvariant()
+}
+
+function Get-LocalFolderMap {
+    # Map of normalized-name -> actual folder name for every cloned repo in
+    # REPO_DIR. Built once and reused so a lookup does not re-scan the disk.
+    $map = @{}
+    foreach ($d in (Get-ChildItem -Directory (Get-RepoDir) -ErrorAction SilentlyContinue)) {
+        if (Test-Path (Join-Path $d.FullName '.git')) {
+            $k = Get-NormalizedName $d.Name
+            if (-not $map.ContainsKey($k)) { $map[$k] = $d.Name }
+        }
+    }
+    $map
+}
+
+function Resolve-LocalFolder {
+    # Return the actual on-disk folder name for a GitHub repo name, or $null if
+    # not cloned. Exact match wins; otherwise fall back to a normalized match.
+    param([string]$Name, [hashtable]$NormMap)
+    if (Test-Path (Join-Path (Join-Path (Get-RepoDir) $Name) '.git')) { return $Name }
+    if (-not $NormMap) { $NormMap = Get-LocalFolderMap }
+    $key = Get-NormalizedName $Name
+    if ($NormMap.ContainsKey($key)) { return $NormMap[$key] }
+    $null
+}
+
 function Test-RepoOnDisk {
     param([string]$Name)
-    Test-Path (Join-Path (Join-Path (Get-RepoDir) $Name) '.git')
+    [bool](Resolve-LocalFolder $Name)
 }
 
 function Get-Repos {
@@ -28,13 +60,16 @@ function Get-Repos {
     try { $list = $json | ConvertFrom-Json } catch {
         return @{ Ok = $false; Error = 'gh repo list failed - check gh auth login'; Repos = @() }
     }
+    $map = Get-LocalFolderMap
     $repos = @(foreach ($r in ($list | Sort-Object name)) {
         $ku = 0; if ($r.diskUsage) { $ku = $r.diskUsage }
+        $local = Resolve-LocalFolder $r.name $map
         [pscustomobject]@{
-            Name   = $r.name
-            Slug   = $r.nameWithOwner
-            SizeMB = Format-SizeMB $ku
-            OnDisk = Test-RepoOnDisk $r.name
+            Name      = $r.name
+            Slug      = $r.nameWithOwner
+            SizeMB    = Format-SizeMB $ku
+            OnDisk    = [bool]$local
+            LocalName = if ($local) { $local } else { $r.name }
         }
     })
     @{ Ok = $true; Error = $null; Repos = $repos }

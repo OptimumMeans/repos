@@ -28,6 +28,33 @@ Describe 'Test-RepoOnDisk / Get-RepoDir' {
     It 'is false for a missing repo' { Test-RepoOnDisk 'ghost' | Should -BeFalse }
 }
 
+Describe 'Normalized local-folder matching' {
+    BeforeAll {
+        $script:tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("reponorm_" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'dashd\.git') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'tail-and-veil\.git') | Out-Null
+        $env:REPO_DIR = $tmp
+    }
+    AfterAll {
+        $env:REPO_DIR = $null
+        Remove-Item -Recurse -Force $script:tmp -ErrorAction SilentlyContinue
+    }
+    It 'normalizes punctuation and case' {
+        Get-NormalizedName 'Dash-d' | Should -Be 'dashd'
+        Get-NormalizedName 'TailAndVeil' | Should -Be 'tailandveil'
+    }
+    It 'resolves a differently-punctuated GitHub name to the real folder' {
+        Resolve-LocalFolder 'Dash-d' | Should -Be 'dashd'
+        Resolve-LocalFolder 'TailAndVeil' | Should -Be 'tail-and-veil'
+    }
+    It 'treats a normalized match as on disk' {
+        Test-RepoOnDisk 'Dash-d' | Should -BeTrue
+    }
+    It 'returns null for a genuinely missing repo' {
+        Resolve-LocalFolder 'no-such-repo' | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Get-RepoFiles' {
     BeforeAll {
         $script:tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("repofiles_" + [guid]::NewGuid().ToString('N'))
