@@ -201,8 +201,50 @@ function Render-List {
     }
 }
 
-# Stub replaced in Task 5.
-function Toggle-Repo($name) { }
+function Show-Balloon($title, $text, $kind) {
+    $notify.BalloonTipTitle = $title
+    $notify.BalloonTipText = $text
+    $notify.BalloonTipIcon = $kind
+    $notify.ShowBalloonTip(5000)
+}
+
+function Toggle-Repo($name) {
+    if ($script:jobs.ContainsKey($name)) { return }
+    $repo = $script:repos | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+    if (-not $repo) { return }
+    $action = if ($repo.OnDisk) { 'off' } else { 'on' }
+    # Offload the actual folder (LocalName handles dashd vs Dash-d); clone a new
+    # repo under its exact GitHub name.
+    $target = if ($action -eq 'off') { $repo.LocalName } else { $repo.Name }
+    $verb = if ($action -eq 'off') { 'Offloading' } else { 'Cloning' }
+    Show-Balloon 'GitHub Repos' "$verb $name..." ([System.Windows.Forms.ToolTipIcon]::Info)
+    $job = Start-RepoToggle -Name $target -Action $action -RepoPs1 $RepoPs1 -RepoDir $RepoDir
+    $script:jobs[$name] = @{ Job = $job; Action = $action }
+    Render-List   # row now shows a spinner
+}
+
+function Complete-Jobs {
+    $done = @($script:jobs.Keys | Where-Object { $script:jobs[$_].Job.State -ne 'Running' })
+    foreach ($name in $done) {
+        $entry = $script:jobs[$name]
+        $result = Receive-Job $entry.Job -ErrorAction SilentlyContinue | Select-Object -Last 1
+        Remove-Job $entry.Job -Force
+        $script:jobs.Remove($name)
+        if ($result -and $result.Code -eq 0) {
+            $did = if ($entry.Action -eq 'off') { 'offloaded' } else { 'cloned' }
+            Show-Balloon 'GitHub Repos' "$name $did" ([System.Windows.Forms.ToolTipIcon]::Info)
+        } else {
+            $why = 'unknown error'
+            if ($result -and $result.Out) {
+                $lines = @($result.Out.Trim() -split "`r?`n" | Where-Object { $_ })
+                if ($lines.Count) { $why = $lines[-1] }
+            }
+            Show-Balloon "GitHub Repos: $name failed" $why ([System.Windows.Forms.ToolTipIcon]::Error)
+        }
+        Refresh-Data
+        if ($window.IsVisible) { Render-List }
+    }
+}
 # Stub replaced in Task 6.
 function Browse-Repo($name) { }
 
@@ -257,6 +299,21 @@ $ui.QuitButton.Add_Click({ $notify.Visible = $false; $app.Shutdown() })
 
 # Prime the cache once at startup (the tray is hidden, so this cost is unseen).
 Refresh-Data
+
+# One timer drives both job completion and reconnect detection.
+$timer = New-Object System.Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromSeconds(2)
+$timer.Add_Tick({
+    if ($script:jobs.Count -gt 0) { Complete-Jobs }
+    $now = [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()
+    if ($now -and -not $script:online) {
+        Refresh-Data
+        if ($window.IsVisible) { Render-List }
+        Show-Balloon 'GitHub Repos' 'Back online - repo list refreshed' ([System.Windows.Forms.ToolTipIcon]::Info)
+    }
+    $script:online = $now
+})
+$timer.Start()
 
 $app.Run()
 $mutex.ReleaseMutex()
