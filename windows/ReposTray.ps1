@@ -169,11 +169,30 @@ function Add-RepoRow($repo) {
     [void]$row.Children.Add($right)
 
     # Click the row body (not the switch) to browse files, on-disk repos only.
+    # Browse the real folder (LocalName), which may differ from the GitHub name.
     if ($repo.OnDisk) {
-        $name.Tag = $repo.Name
+        $name.Tag = $repo.LocalName
         $name.Cursor = [System.Windows.Input.Cursors]::Hand
         $name.Add_MouseLeftButtonUp({ Browse-Repo $this.Tag }.GetNewClosure())
     }
+
+    # Right-click: repo actions.
+    $ctx = New-Object System.Windows.Controls.ContextMenu
+    $miExplorer = New-Object System.Windows.Controls.MenuItem; $miExplorer.Header = 'Open in Explorer'
+    $miExplorer.Tag = $repo.LocalName
+    $miExplorer.Add_Click({ Start-Process explorer.exe (Join-Path (Get-RepoDir) $this.Tag) }.GetNewClosure())
+    $miExplorer.IsEnabled = $repo.OnDisk
+    $miCopy = New-Object System.Windows.Controls.MenuItem; $miCopy.Header = 'Copy clone URL'
+    $miCopy.Tag = (Get-RepoUrls $repo.Slug).Clone
+    $miCopy.Add_Click({ [System.Windows.Clipboard]::SetText($this.Tag) }.GetNewClosure())
+    $miWeb = New-Object System.Windows.Controls.MenuItem; $miWeb.Header = 'Open on GitHub'
+    $miWeb.Tag = (Get-RepoUrls $repo.Slug).Web
+    $miWeb.Add_Click({ Start-Process $this.Tag }.GetNewClosure())
+    [void]$ctx.Items.Add($miExplorer)
+    [void]$ctx.Items.Add($miCopy)
+    [void]$ctx.Items.Add($miWeb)
+    $row.ContextMenu = $ctx
+
     [void]$ui.RepoListPanel.Children.Add($row)
 }
 
@@ -245,8 +264,51 @@ function Complete-Jobs {
         if ($window.IsVisible) { Render-List }
     }
 }
-# Stub replaced in Task 6.
-function Browse-Repo($name) { }
+function Render-Files {
+    $ui.FileListPanel.Children.Clear()
+    $rel = $script:browsePath
+    $ui.BreadcrumbText.Text = if ($rel) { "$($script:browseRepo)\$rel" } else { $script:browseRepo }
+    foreach ($item in (Get-RepoFiles $script:browseRepo $rel)) {
+        $r = New-Object System.Windows.Controls.StackPanel
+        $r.Orientation = 'Horizontal'
+        $r.Height = 30
+        $r.Cursor = [System.Windows.Input.Cursors]::Hand
+        $r.Background = [System.Windows.Media.Brushes]::Transparent
+        if ($item.IsDir) { $g = New-Glyph ([char]0xE8B7) '#E0A93B' }   # folder
+        else             { $g = New-Glyph ([char]0xE7C3) '#8A8F98' }   # file
+        [void]$r.Children.Add($g)
+        $t = New-Object System.Windows.Controls.TextBlock
+        $t.Text = $item.Name
+        $t.FontSize = 13
+        $t.VerticalAlignment = 'Center'
+        $t.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString('#222222')
+        [void]$r.Children.Add($t)
+        $r.Tag = $item
+        # Read the clicked row from the event sender, not $this: Render-Files is
+        # re-entrant (a folder click calls it again), and a captured $this would
+        # freeze to the parent row, breaking clicks on nested folders.
+        $r.Add_MouseLeftButtonUp({
+            param($sender, $e)
+            $it = $sender.Tag
+            if ($it.IsDir) {
+                $script:browsePath = if ($script:browsePath) { Join-Path $script:browsePath $it.Name } else { $it.Name }
+                Render-Files
+            } else {
+                Start-Process $it.FullPath
+            }
+        })
+        [void]$ui.FileListPanel.Children.Add($r)
+    }
+}
+
+function Browse-Repo($name) {
+    $script:browseRepo = $name
+    $script:browsePath = ''
+    $ui.ListView.Visibility = [System.Windows.Visibility]::Collapsed
+    $ui.BrowseView.Visibility = [System.Windows.Visibility]::Visible
+    Render-Files
+    Position-Panel
+}
 
 # Hide when the user clicks away.
 $window.Add_Deactivated({ Hide-Panel })
@@ -296,6 +358,20 @@ $ui.SearchBox.Add_TextChanged({ Render-List })
 $ui.RefreshButton.Add_Click({ Refresh-Data; Render-List })
 $ui.OpenDirButton.Add_Click({ Start-Process explorer.exe $RepoDir })
 $ui.QuitButton.Add_Click({ $notify.Visible = $false; $app.Shutdown() })
+
+$ui.BackButton.Add_Click({
+    if ($script:browsePath) {
+        $script:browsePath = Split-Path $script:browsePath -Parent
+        Render-Files
+    } else {
+        Render-List   # back to the repo list
+        Position-Panel
+    }
+})
+$ui.OpenFolderButton.Add_Click({
+    $target = Join-Path (Join-Path (Get-RepoDir) $script:browseRepo) $script:browsePath
+    Start-Process explorer.exe $target
+})
 
 # Prime the cache once at startup (the tray is hidden, so this cost is unseen).
 Refresh-Data
