@@ -3,3 +3,6 @@ notifier/GitHub Repos.app/
 menubar/Repos.app/
 
 .DS_Store
+
+# Generated knowledge graph (graphify update .) — regenerate, do not commit.
+graphify-out/

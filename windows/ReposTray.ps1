@@ -197,6 +197,10 @@ function Add-RepoRow($repo) {
 }
 
 function Render-List {
+    # Rendering the list means leaving any browse session, so clear the browse
+    # state here - the "am I browsing?" guards elsewhere rely on it.
+    $script:browseRepo = $null
+    $script:browsePath = ''
     $ui.BrowseView.Visibility = [System.Windows.Visibility]::Collapsed
     $ui.ListView.Visibility = [System.Windows.Visibility]::Visible
     $ui.RepoListPanel.Children.Clear()
@@ -261,7 +265,9 @@ function Complete-Jobs {
             Show-Balloon "GitHub Repos: $name failed" $why ([System.Windows.Forms.ToolTipIcon]::Error)
         }
         Refresh-Data
-        if ($window.IsVisible) { Render-List }
+        # Do not re-render while the user is browsing files - it would yank them
+        # back to the repo list mid-session. The list re-renders on their return.
+        if ($window.IsVisible -and -not $script:browseRepo) { Render-List; Position-Panel }
     }
 }
 function Render-Files {
@@ -299,6 +305,8 @@ function Render-Files {
         })
         [void]$ui.FileListPanel.Children.Add($r)
     }
+    # Content height changes per folder; keep the card pinned above the tray.
+    Position-Panel
 }
 
 function Browse-Repo($name) {
@@ -354,8 +362,10 @@ $notify.Add_MouseClick({
     }
 })
 
-$ui.SearchBox.Add_TextChanged({ Render-List })
-$ui.RefreshButton.Add_Click({ Refresh-Data; Render-List })
+# Search and Refresh live in chrome shared by both views; while browsing they
+# must not force the view back to the repo list.
+$ui.SearchBox.Add_TextChanged({ if (-not $script:browseRepo) { Render-List; Position-Panel } })
+$ui.RefreshButton.Add_Click({ Refresh-Data; if (-not $script:browseRepo) { Render-List; Position-Panel } })
 $ui.OpenDirButton.Add_Click({ Start-Process explorer.exe $RepoDir })
 $ui.QuitButton.Add_Click({ $notify.Visible = $false; $app.Shutdown() })
 
@@ -384,7 +394,7 @@ $timer.Add_Tick({
     $now = [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()
     if ($now -and -not $script:online) {
         Refresh-Data
-        if ($window.IsVisible) { Render-List }
+        if ($window.IsVisible -and -not $script:browseRepo) { Render-List; Position-Panel }
         Show-Balloon 'GitHub Repos' 'Back online - repo list refreshed' ([System.Windows.Forms.ToolTipIcon]::Info)
     }
     $script:online = $now
