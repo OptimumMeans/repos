@@ -107,3 +107,48 @@ Describe 'Get-Repos' {
         $r.Error | Should -Match 'gh'
     }
 }
+
+Describe 'Format-SizeText' {
+    It 'shows MB under 1 GB and GB above' {
+        Format-SizeText 0 | Should -Be '0 MB'
+        Format-SizeText 900 | Should -Be '900 MB'
+        Format-SizeText 1536 | Should -Be '1.5 GB'
+        Format-SizeText 42496 | Should -Be '41.5 GB'
+    }
+}
+
+Describe 'Get-FolderSizeMB / Get-IgnoredLocalOnly' {
+    BeforeAll {
+        $script:repo = Join-Path ([System.IO.Path]::GetTempPath()) ("repoign_" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $repo | Out-Null
+        git -C $repo init -q
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value "data/`nnode_modules/`n.env"
+        New-Item -ItemType Directory -Force -Path (Join-Path $repo 'data'), (Join-Path $repo 'node_modules\pkg') | Out-Null
+        [System.IO.File]::WriteAllBytes((Join-Path $repo 'data\big.bin'), (New-Object byte[] (3MB)))
+        [System.IO.File]::WriteAllBytes((Join-Path $repo 'node_modules\pkg\x.js'), (New-Object byte[] 10))
+        Set-Content -LiteralPath (Join-Path $repo '.env') -Value 'SECRET=1'
+        Set-Content -LiteralPath (Join-Path $repo 'tracked.txt') -Value 'hi'
+    }
+    AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+
+    It 'sums file sizes recursively in MB' {
+        Get-FolderSizeMB (Join-Path $repo 'data') | Should -Be 3
+    }
+    It 'lists ignored data and secrets that only exist locally' {
+        $paths = @(Get-IgnoredLocalOnly $repo | ForEach-Object Path)
+        $paths | Should -Contain 'data'
+        $paths | Should -Contain '.env'
+    }
+    It 'skips regenerable installs like node_modules' {
+        @(Get-IgnoredLocalOnly $repo | ForEach-Object Path) | Should -Not -Contain 'node_modules'
+    }
+    It 'reports the size of each ignored entry' {
+        (Get-IgnoredLocalOnly $repo | Where-Object Path -eq 'data').SizeMB | Should -Be 3
+    }
+    It 'returns nothing for a repo with no ignored files' {
+        $clean = Join-Path ([System.IO.Path]::GetTempPath()) ("repoclean_" + [guid]::NewGuid().ToString('N'))
+        git init -q $clean
+        @(Get-IgnoredLocalOnly $clean).Count | Should -Be 0
+        Remove-Item -Recurse -Force $clean
+    }
+}

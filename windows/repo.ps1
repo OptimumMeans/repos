@@ -41,11 +41,14 @@ function Cmd-On($name) {
 
 function Cmd-Off($names) {
     $force = $false
+    $discardIgnored = $false
     $rest = @()
     foreach ($a in $names) {
-        if ($a -eq '--force' -or $a -eq '-Force') { $force = $true } else { $rest += $a }
+        if ($a -eq '--force' -or $a -eq '-Force') { $force = $true }
+        elseif ($a -eq '--discard-ignored') { $discardIgnored = $true }
+        else { $rest += $a }
     }
-    if ($rest.Count -lt 1) { Die 'usage: repo off [--force] <name>' }
+    if ($rest.Count -lt 1) { Die 'usage: repo off [--force] [--discard-ignored] <name>' }
     $local = Split-Path $rest[0] -Leaf
     $dest = Join-Path $RepoDir $local
     if (-not (Test-Path (Join-Path $dest '.git'))) { Die "$dest is not a cloned repo (already off?)." }
@@ -66,6 +69,19 @@ function Cmd-Off($names) {
             [Console]::Error.WriteLine("repo: refusing to remove $local - would lose work:")
             $problems | ForEach-Object { [Console]::Error.WriteLine($_) }
             Die "commit & push first, or override with: repo off --force $local"
+        }
+        if (-not $discardIgnored) {
+            # Ignored files never reach GitHub, so deleting the folder loses them for good.
+            . (Join-Path $PSScriptRoot 'RepoOps.ps1')
+            $ignored = @(Get-IgnoredLocalOnly $dest)
+            if ($ignored.Count -gt 0) {
+                [Console]::Error.WriteLine("repo: refusing to remove $local - ignored files exist only on this PC:")
+                $ignored | Sort-Object SizeMB -Descending | Select-Object -First 10 | ForEach-Object {
+                    [Console]::Error.WriteLine(('  * {0} ({1})' -f $_.Path, (Format-SizeText $_.SizeMB)))
+                }
+                if ($ignored.Count -gt 10) { [Console]::Error.WriteLine("  ...and $($ignored.Count - 10) more") }
+                Die "back them up first, or override with: repo off --discard-ignored $local"
+            }
         }
     }
     # -Force clears the read-only bits git sets on pack files.

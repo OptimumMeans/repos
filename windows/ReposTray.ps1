@@ -36,6 +36,8 @@ $toggleStyle = $window.FindResource('ToggleSwitch')
 # --- state (populated in later tasks) ---
 $script:repos = @()
 $script:jobs = @{}
+$script:localSizes = @{}   # LocalName -> MB, from the last background size scan
+$script:sizeJob = $null
 $script:browseRepo = $null
 $script:browsePath = ''
 $script:online = [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()
@@ -69,11 +71,31 @@ function Refresh-Data {
     $result = Get-Repos
     if ($result.Ok) {
         $script:repos = $result.Repos
+        Apply-LocalSizes
+        if ($script:sizeJob) { Remove-Job $script:sizeJob -Force -ErrorAction SilentlyContinue }
+        $folders = @($script:repos | Where-Object OnDisk | ForEach-Object LocalName)
+        $script:sizeJob = Start-LocalSizeScan -Folders $folders -RepoDir $RepoDir -OpsPs1 (Join-Path $Root 'RepoOps.ps1')
         $ui.ErrorText.Visibility = [System.Windows.Visibility]::Collapsed
     } else {
         $ui.ErrorText.Text = $result.Error
         $ui.ErrorText.Visibility = [System.Windows.Visibility]::Visible
     }
+}
+
+function Apply-LocalSizes {
+    foreach ($r in $script:repos) {
+        $r.LocalMB = if ($r.OnDisk -and $script:localSizes.ContainsKey($r.LocalName)) { $script:localSizes[$r.LocalName] } else { $null }
+    }
+}
+
+function Complete-SizeScan {
+    if (-not $script:sizeJob -or $script:sizeJob.State -eq 'Running') { return }
+    $sizes = Receive-Job $script:sizeJob -ErrorAction SilentlyContinue | Select-Object -Last 1
+    Remove-Job $script:sizeJob -Force
+    $script:sizeJob = $null
+    if ($sizes -is [hashtable]) { $script:localSizes = $sizes }
+    Apply-LocalSizes
+    if ($window.IsVisible -and -not $script:browseRepo) { Render-List; Position-Panel }
 }
 
 function Update-OnDiskFlags {
@@ -151,7 +173,11 @@ function Add-RepoRow($repo) {
         [void]$right.Children.Add($spin)
     } else {
         $size = New-Object System.Windows.Controls.TextBlock
-        $size.Text = ('{0} MB' -f $repo.SizeMB)
+        # On-disk rows show the real folder size (GitHub's figure only counts what
+        # was pushed); '...' until the background scan lands.
+        $size.Text = if (-not $repo.OnDisk) { Format-SizeText $repo.SizeMB }
+                     elseif ($null -ne $repo.LocalMB) { Format-SizeText $repo.LocalMB }
+                     else { '...' }
         $size.FontSize = 12
         $size.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString('#8A8F98')
         $size.VerticalAlignment = 'Center'
@@ -211,8 +237,8 @@ function Render-List {
 
     $onDisk = @($shown | Where-Object OnDisk)
     $cloud  = @($shown | Where-Object { -not $_.OnDisk })
-    $mb = ($onDisk | Measure-Object SizeMB -Sum).Sum; if (-not $mb) { $mb = 0 }
-    $ui.SummaryText.Text = ('{0} on this PC - {1} MB   ({2} total)' -f $onDisk.Count, $mb, $script:repos.Count)
+    $mb = ($onDisk | Where-Object { $null -ne $_.LocalMB } | Measure-Object LocalMB -Sum).Sum; if (-not $mb) { $mb = 0 }
+    $ui.SummaryText.Text = ('{0} on this PC - {1}   ({2} total)' -f $onDisk.Count, (Format-SizeText $mb), $script:repos.Count)
 
     if ($onDisk.Count) {
         Add-SectionHeader 'ON THIS PC'
@@ -239,9 +265,25 @@ function Toggle-Repo($name) {
     # Offload the actual folder (LocalName handles dashd vs Dash-d); clone a new
     # repo under its exact GitHub name.
     $target = if ($action -eq 'off') { $repo.LocalName } else { $repo.Name }
+    $flags = ''
+    if ($action -eq 'off') {
+        # Ignored files (data, captures, .env) never reach GitHub: offloading
+        # deletes them for good, so ask first and only then let repo.ps1 proceed.
+        $ignored = @(Get-IgnoredLocalOnly (Join-Path $RepoDir $target) | Sort-Object SizeMB -Descending)
+        if ($ignored.Count -gt 0) {
+            $total = ($ignored | Measure-Object SizeMB -Sum).Sum
+            $lines = @($ignored | Select-Object -First 12 | ForEach-Object { '  {0}  ({1})' -f $_.Path, (Format-SizeText $_.SizeMB) })
+            if ($ignored.Count -gt 12) { $lines += "  ...and $($ignored.Count - 12) more" }
+            $msg = "These ignored files in $target are NOT on GitHub and will be permanently deleted ($(Format-SizeText $total)):`n`n" +
+                   ($lines -join "`n") + "`n`nBack them up first if you need them. Delete anyway?"
+            $answer = [System.Windows.MessageBox]::Show($msg, "Offload $name?", 'YesNo', 'Warning', 'No')
+            if ($answer -ne 'Yes') { return }
+            $flags = '--discard-ignored'
+        }
+    }
     $verb = if ($action -eq 'off') { 'Offloading' } else { 'Cloning' }
     Show-Balloon 'GitHub Repos' "$verb $name..." ([System.Windows.Forms.ToolTipIcon]::Info)
-    $job = Start-RepoToggle -Name $target -Action $action -RepoPs1 $RepoPs1 -RepoDir $RepoDir
+    $job = Start-RepoToggle -Name $target -Action $action -RepoPs1 $RepoPs1 -RepoDir $RepoDir -Flags $flags
     $script:jobs[$name] = @{ Job = $job; Action = $action }
     Render-List   # row now shows a spinner
 }
@@ -391,6 +433,7 @@ $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromSeconds(2)
 $timer.Add_Tick({
     if ($script:jobs.Count -gt 0) { Complete-Jobs }
+    Complete-SizeScan
     $now = [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()
     if ($now -and -not $script:online) {
         Refresh-Data
